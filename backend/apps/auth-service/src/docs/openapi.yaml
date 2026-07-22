@@ -1,0 +1,83 @@
+openapi: 3.0.3
+
+info:
+  title: Vendor Marketplace Auth Service
+  description: Authentication Microservice API
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3001
+
+tags:
+  - name: Authentication
+
+paths:
+  /api/auth/register:
+    post:
+      summary: Register User
+      tags:
+        - Authentication
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - firstName
+                - lastName
+
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: vendor@gmail.com
+
+                password:
+                  type: string
+                  format: password
+                  example: Password@123
+
+                firstName:
+                  type: string
+                  example: Kunal
+
+                lastName:
+                  type: string
+                  example: Jain
+
+                role:
+                  type: string
+                  enum:
+                    - CUSTOMER
+                    - VENDOR
+                  example: VENDOR
+
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              example:
+                success: true
+                message: User registered successfully
+                data:
+                  user:
+                    id: "8fd5b6ab-1d9b-4c84-9b4c-d2d77a9e4f63"
+                    email: "vendor@gmail.com"
+                    firstName: "Kunal"
+                    lastName: "Jain"
+                    role: "VENDOR"
+                    isVerified: false
+
+                  accessToken: "eyJhbGciOi..."
+                  refreshToken: "eyJhbGciOi..."
+
+        "400":
+          description: Validation Error
+
+        "409":
+          description: User already exists

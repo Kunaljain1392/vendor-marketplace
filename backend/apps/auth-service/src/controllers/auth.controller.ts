@@ -1,15 +1,23 @@
 // apps/auth-service/src/controllers/auth.controller.ts
 
-import { NextFunction, Request, Response } from 'express';
-import { authService } from '../services/auth.service.js';
-import { registerSchema, loginSchema, changePasswordSchema, forgotPasswordSchema, resetPasswordSchema, verifyEmailSchema } from '../schemas/auth.schema.js';
-import { ZodError } from 'zod';
-import { AuthRequest } from '../middleware/auth.middleware.js'; // Naya import
-import { userRepository } from '../repositories/user.repository.js';
-import { logger } from '../utils/logger.js';
+import { NextFunction, Request, Response } from "express";
+import { authService } from "../services/auth.service.js";
+import {
+  registerSchema,
+  loginSchema,
+  changePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  verifyEmailSchema,
+} from "../schemas/auth.schema.js";
+import { ZodError } from "zod";
+// import { AuthRequest } from '../middleware/auth.middleware.js'; // Naya import
+import { userRepository } from "../repositories/user.repository.js";
+import { logger } from "../utils/logger.js";
+import { AppError } from "../exceptions/app.exception.js";
+import type { AuthRequest } from "../middleware/auth.middleware.js";
 
 export class AuthController {
-  
   // Registration handle karne ka function (arrow function taaki 'this' ka issue na aaye)
   register = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -23,16 +31,15 @@ export class AuthController {
       res.status(201).json({
         success: true,
         message: "User registered successfully",
-        data: user
+        data: user,
       });
-
     } catch (error: any) {
       // Agar Zod validation fail ho jaye (jaise password chota ho)
       if (error instanceof ZodError) {
         res.status(400).json({
           success: false,
           message: "Validation Error",
-          errors: error.message
+          errors: error.message,
         });
         return;
       }
@@ -40,7 +47,7 @@ export class AuthController {
       // Agar koi aur error aaye (jaise Email already exists)
       res.status(400).json({
         success: false,
-        message: error.message || "Internal Server Error"
+        message: error.message || "Internal Server Error",
       });
     }
   };
@@ -57,22 +64,22 @@ export class AuthController {
       res.status(200).json({
         success: true,
         message: "Login successful",
-        data: result
+        data: result,
       });
-
     } catch (error: any) {
       if (error instanceof ZodError) {
         res.status(400).json({
           success: false,
           message: "Validation Error",
-          errors: error.message
+          errors: error.message,
         });
         return;
       }
 
-      res.status(401).json({ // 401 matlab Unauthorized
+      res.status(401).json({
+        // 401 matlab Unauthorized
         success: false,
-        message: error.message || "Invalid credentials"
+        message: error.message || "Invalid credentials",
       });
     }
   };
@@ -82,6 +89,10 @@ export class AuthController {
   getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       // req.user wahi data hai jo humne token banate waqt daala tha (jaise userId)
+      if (!req.user) {
+        throw new Error("Unauthorized");
+      }
+
       const userId = req.user.userId;
 
       // Database se user dhundho
@@ -97,17 +108,26 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        data: userProfile
+        data: userProfile,
       });
     } catch (error: any) {
-      res.status(500).json({ success: false, message: "Internal Server Error" });
+      res
+        .status(500)
+        .json({ success: false, message: "Internal Server Error" });
     }
   };
 
   changePassword = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const validatedData = changePasswordSchema.parse({ body: req.body });
-      const result = await authService.changePassword(req.user.userId, validatedData.body);
+      if (!req.user) {
+        throw new Error("Unauthorized");
+      }
+
+      const result = await authService.changePassword(
+        req.user.userId,
+        validatedData.body,
+      );
       res.status(200).json({ success: true, ...result });
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message });
@@ -134,39 +154,80 @@ export class AuthController {
     }
   };
 
-  refreshToken = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { token } = req.body; // Maan lete hain token body mein aa raha hai
-      if (!token) throw new Error("Token is required");
-      const result = await authService.refreshToken(token);
-      res.status(200).json({ success: true, ...result });
-    } catch (error: any) {
-      res.status(401).json({ success: false, message: error.message });
+refreshToken = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      throw new AppError(400, "Refresh token is required");
     }
-  };
 
-  logout = async (req: AuthRequest, res: Response): Promise<void> => {
-    // TODO: Jab Redis aayega, hum is token ko Blacklist mein daal denge
-    // Abhi ke liye bas client ko bol rahe hain ki apne paas se token delete kar do
-    res.status(200).json({ success: true, message: "Logged out successfully. Please remove token from client." });
-  };
+    const result = await authService.refreshToken(refreshToken);
 
-  verifyEmail = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.status(200).json({
+      success: true,
+      message: "Token refreshed successfully",
+      data: result,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+  // logout = async (req: AuthRequest, res: Response): Promise<void> => {
+  //   // TODO: Jab Redis aayega, hum is token ko Blacklist mein daal denge
+  //   // Abhi ke liye bas client ko bol rahe hain ki apne paas se token delete kar do
+  //   res.status(200).json({ success: true, message: "Logged out successfully. Please remove token from client." });
+  // };
+
+  verifyEmail = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const validatedData = verifyEmailSchema.parse({ body: req.body });
-      
+
       logger.info("Verifying email with token");
       const result = await authService.verifyEmail(validatedData.body.token);
-      
+
       res.status(200).json({
         success: true,
-        ...result
+        ...result,
       });
     } catch (error) {
       next(error); // Error handling middleware ke paas bhej diya
     }
   };
 
+  logout = async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      // Header se token nikalna
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        res.status(400).json({ success: false, message: "Token not found" });
+        return;
+      }
+
+      const token = authHeader.split(" ")[1];
+
+      // Service call karna
+      const result = await authService.logout(token);
+
+      res.status(200).json({ success: true, ...result });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
 
 export const authController = new AuthController();

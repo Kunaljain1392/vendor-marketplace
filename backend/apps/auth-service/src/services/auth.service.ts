@@ -3,168 +3,476 @@
 import bcrypt from 'bcrypt';
 import { userRepository } from '../repositories/user.repository.js';
 import { AppError } from '../exceptions/app.exception.js';
-import { generateTokens } from '../utils/jwt.util.js';
+import { generateTokens, verifyRefreshToken } from '../utils/jwt.util.js';
+import { Prisma, Role } from "@prisma/client";
+import { redisClient } from '../config/redis.js';
 import jwt from 'jsonwebtoken';
-import { da } from 'zod/locales';
-import { Role } from "@prisma/client";
+import { refreshTokenRepository } from '../repositories/refresh-token.repository.js';
+import { prisma } from '../config/prisma.js';
+import { logger } from '../utils/logger.js';
+import { EXCHANGES, ROUTING_KEYS } from '../constants/rabbitmq.constants.js';
+import { getChannel } from '../config/rabbitmq.js';
+import type {
+  RegisterDTO,
+  LoginDTO,
+  ChangePasswordDTO,
+  ResetPasswordDTO,
+} from "../schemas/auth.schema.js";
 
-// We will map this to our Zod schema later
-export interface RegisterDTO {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
-  role?: Role;
-}
 
 export class AuthService {
 
-  async register(data: RegisterDTO) {
-    // 1. Check if user already exists
-    const existingUser = await userRepository.findByEmail(data.email);
-    if (existingUser) {
-      // 409 Conflict is the correct HTTP status when a resource already exists
-      throw new AppError(409, 'User with this email already exists');
-    }
+//   private async publishUserRegistered(
+//   user: {
+//     id: string;
+//     email: string;
+//     firstName: string;
+//     role: Role;
+//   }
+// ): Promise<void> {
+//   try {
+//     const channel = getChannel();
 
-    // 2. Hash the password
-    // 10 salt rounds is standard for production (balances security and server CPU load)
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(data.password, saltRounds);
+//     channel.publish(
+//       EXCHANGES.AUTH,
+//       ROUTING_KEYS.USER_REGISTERED,
+//       Buffer.from(
+//         JSON.stringify({
+//           userId: user.id,
+//           email: user.email,
+//           firstName: user.firstName,
+//           role: user.role,
+//         })
+//       ),
+//       {
+//         persistent: true,
+//       }
+//     );
 
-    // 3. Create the user in the database
-    const user = await userRepository.create({
-      email: data.email,
-      passwordHash: passwordHash,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      role: data.role
-    });
+//     logger.info(
+//       {
+//         userId: user.id,
+//       },
+//       "USER_REGISTERED event published"
+//     );
 
-    // 4. Generate Tokens
-    const { accessToken, refreshToken } = generateTokens(user.id, user.role);
+//   } catch (error) {
 
-    // Note: In a full implementation, we should also save the refreshToken to the database here.
-    // For now, we return the data to the controller.
+//     logger.error(
+//       error,
+//       "Failed to publish USER_REGISTERED event"
+//     );
 
-    // 5. Remove passwordHash from the return object for security
-    const { passwordHash: _, ...userWithoutPassword } = user;
+//     // User registration should NOT fail
+//   }
+// }
+
+  private async ensureEmailAvailable(email: string): Promise<void> {
+  const existingUser = await userRepository.findByEmail(email);
+
+  if (existingUser) {
+    throw new AppError(409, "User with this email already exists");
+  }
+}
+
+private async hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, 10);
+}
+
+private removePassword<T extends { passwordHash: string }>(
+  user: T
+): Omit<T, "passwordHash"> {
+  const { passwordHash, ...safeUser } = user;
+  return safeUser;
+}
+
+private async validateUserCredentials(
+  email: string,
+  password: string
+) {
+  const user = await userRepository.findByEmail(email);
+
+  if (!user) {
+    throw new AppError(401, "Invalid email or password");
+  }
+
+  const passwordMatched = await bcrypt.compare(
+    password,
+    user.passwordHash
+  );
+
+  if (!passwordMatched) {
+    throw new AppError(401, "Invalid email or password");
+  }
+
+  return user;
+}
+
+private async revokeUserRefreshTokens(
+  userId: string,
+  tx: Prisma.TransactionClient
+) {
+  await tx.refreshToken.deleteMany({
+    where: {
+      userId,
+    },
+  });
+}
+
+private async getValidRefreshToken(token: string) {
+  const payload = verifyRefreshToken(token);
+
+  const refreshToken =
+    await refreshTokenRepository.findByToken(token);
+
+  if (!refreshToken) {
+    throw new AppError(401, "Invalid refresh token");
+  }
+
+  if (refreshToken.expiresAt < new Date()) {
+    throw new AppError(401, "Refresh token expired");
+  }
+
+  return {
+    payload,
+    refreshToken,
+  };
+}
+
+async register(data: RegisterDTO) {
+
+  await this.ensureEmailAvailable(data.email);
+
+  const passwordHash = await this.hashPassword(data.password);
+
+  return prisma.$transaction(async (tx) => {
+
+    // 1. Create User
+    const user = await userRepository.create(
+      {
+        email: data.email,
+        passwordHash,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: data.role,
+      },
+      tx
+    );
+
+    // 2. Generate Tokens
+    const {
+      accessToken,
+      refreshToken,
+      refreshTokenExpiresAt,
+    } = generateTokens(user.id, user.role);
+
+    // 3. Save Refresh Token
+    await refreshTokenRepository.create(
+      {
+        token: refreshToken,
+        expiresAt: refreshTokenExpiresAt,
+        user: {
+          connect: {
+            id: user.id,
+          },
+        },
+      },
+      tx
+    );
+
+    // 4. Remove password
+    const { passwordHash: _, ...safeUser } = user;
+
+    // 5. TODO
+    // publish USER_REGISTERED event
 
     return {
-      user: userWithoutPassword,
+      user: safeUser,
       accessToken,
       refreshToken,
     };
-  }
+  });
+}
 
-  async loginUser(data: any) {
-    // 1. Check karein ki user exist karta hai ya nahi
-    const user = await userRepository.findByEmail(data.email);
-    if (!user) {
-      throw new Error("Invalid email or password"); // Security ke liye kabhi nahi batate ki email galat hai ya password
-    }
+async loginUser(data: LoginDTO) {
+  const user = await this.validateUserCredentials(
+    data.email,
+    data.password
+  );
 
-    // 2. Password match karein (bcrypt check karega ki input password aur db ka hashed password same hain ya nahi)
-    const isPasswordValid = await bcrypt.compare(data.password, user.passwordHash);
-    if (!isPasswordValid) {
-      throw new Error("Invalid email or password");
-    }
+  return prisma.$transaction(async (tx) => {
+    // Revoke old refresh tokens
+    await this.revokeUserRefreshTokens(user.id, tx);
 
-    // 3. JWT Token banayein
-    const payload = {
-      userId: user.id,
-      role: user.role,
-    };
-    
-    // .env se secret nikalein (agar na mile toh fallback use karein, halanki prod mein fallback nahi hona chahiye)
-    const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key';
-    const token = jwt.sign(payload, jwtSecret, { expiresIn: '1d' });
+    // Generate new tokens
+    const {
+      accessToken,
+      refreshToken,
+      refreshTokenExpiresAt,
+    } = generateTokens(user.id, user.role);
 
-    // 4. User data (bina password ke) aur token wapas bhejein
-    const { passwordHash, ...userWithoutPassword } = user;
-    
+    // Save refresh token
+    await refreshTokenRepository.create(
+      {
+        token: refreshToken,
+        expiresAt: refreshTokenExpiresAt,
+        user: {
+          connect: {
+            id: user.id,
+          },
+        },
+      },
+      tx
+    );
+
     return {
-      user: userWithoutPassword,
-      token
+      user: this.removePassword(user),
+      accessToken,
+      refreshToken,
+    };
+  });
+}
+
+async changePassword(
+  userId: string,
+  data: ChangePasswordDTO
+) {
+  const user = await userRepository.findById(userId);
+
+  if (!user) {
+    throw new AppError(404, "User not found");
+  }
+
+  const passwordMatched = await bcrypt.compare(
+    data.oldPassword,
+    user.passwordHash
+  );
+
+  if (!passwordMatched) {
+    throw new AppError(401, "Invalid old password");
+  }
+
+  const passwordHash = await this.hashPassword(
+    data.newPassword
+  );
+
+  await userRepository.update(userId, {
+    passwordHash,
+  });
+
+  await prisma.refreshToken.deleteMany({
+    where: {
+      userId,
+    },
+  });
+
+  return {
+    message: "Password changed successfully",
+  };
+}
+
+async forgotPassword(email: string) {
+  const user = await userRepository.findByEmail(email);
+
+  if (!user) {
+    return {
+      message:
+        "If the email exists, a reset link has been sent.",
     };
   }
 
-  async changePassword(userId: string, data: any) {
-    const user = await userRepository.findById(userId);
-    if (!user) throw new Error("User not found");
+  // TODO
+  // Generate reset token
+  // Publish RabbitMQ event
 
-    const isMatch = await bcrypt.compare(data.oldPassword, user.passwordHash);
-    if (!isMatch) throw new Error("Incorrect old password");
+  return {
+    message:
+      "If the email exists, a reset link has been sent.",
+  };
+}
 
-    const newPasswordHash = await bcrypt.hash(data.newPassword, 10);
-    // Yahan hum update function assume kar rahe hain. 
-    await userRepository.update(userId, { passwordHash: newPasswordHash });
-    
-    return { message: "Password updated successfully" };
+async resetPassword(
+  data: ResetPasswordDTO
+) {
+  try {
+    const decoded = jwt.verify(
+      data.token,
+      process.env.JWT_SECRET!
+    ) as {
+      userId: string;
+    };
+
+    const passwordHash =
+      await this.hashPassword(
+        data.newPassword
+      );
+
+    await prisma.$transaction(async (tx) => {
+
+      await tx.user.update({
+        where: {
+          id: decoded.userId,
+        },
+        data: {
+          passwordHash,
+        },
+      });
+
+      await tx.refreshToken.deleteMany({
+        where: {
+          userId: decoded.userId,
+        },
+      });
+
+    });
+
+    return {
+      message:
+        "Password reset successfully",
+    };
+
+  } catch {
+    throw new AppError(
+      401,
+      "Invalid or expired reset token"
+    );
   }
+}
 
-  async forgotPassword(email: string) {
-    const user = await userRepository.findByEmail(email);
+async refreshToken(oldRefreshToken: string) {
+  const { payload, refreshToken } =
+    await this.getValidRefreshToken(oldRefreshToken);
+
+  return prisma.$transaction(async (tx) => {
+
+    // 1. Delete old refresh token
+    await refreshTokenRepository.delete(
+      refreshToken.id,
+      tx
+    );
+
+    // 2. Get user
+    const user = await userRepository.findById(
+      payload.userId
+    );
+
     if (!user) {
-      // Security: Hum user ko nahi batate ki email galat hai ya sahi
-      return { message: "If that email is registered, we have sent a reset link." };
+      throw new AppError(404, "User not found");
     }
 
-    // Ek temporary token banate hain reset ke liye (15 mins valid)
-    const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key';
-    const resetToken = jwt.sign({ userId: user.id }, jwtSecret, { expiresIn: '15m' });
+    // 3. Generate new tokens
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+      refreshTokenExpiresAt,
+    } = generateTokens(user.id, user.role);
 
-    // TODO: RabbitMQ ke zariye Email bhejne ka logic yahan aayega
-    // Abhi testing ke liye hum token response mein bhej rahe hain
-    return { 
-      message: "If that email is registered, we have sent a reset link.",
-      resetToken // Note: Production mein ise response mein nahi bhejte!
+    // 4. Save new refresh token
+    await refreshTokenRepository.create(
+      {
+        token: newRefreshToken,
+        expiresAt: refreshTokenExpiresAt,
+        user: {
+          connect: {
+            id: user.id,
+          },
+        },
+      },
+      tx
+    );
+
+    // 5. Return new tokens
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
     };
-  }
+  });
+}
 
-  async resetPassword(data: any) {
-    try {
-      const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key';
-      const decoded = jwt.verify(data.token, jwtSecret) as any;
-      
-      const newPasswordHash = await bcrypt.hash(data.newPassword, 10);
-      await userRepository.update(decoded.userId, { passwordHash: newPasswordHash });
-      
-      return { message: "Password has been reset successfully" };
-    } catch (error) {
-      throw new Error("Invalid or expired reset token");
-    }
-  }
+async verifyEmail(token: string) {
+  try {
 
-  async refreshToken(oldToken: string) {
-    try {
-      const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key';
-      // Token verify karke user ki details nikali
-      const decoded = jwt.verify(oldToken, jwtSecret) as any;
-      
-      // Naya Token generate kiya
-      const newToken = jwt.sign({ userId: decoded.userId, role: decoded.role }, jwtSecret, { expiresIn: '1d' });
-      return { token: newToken };
-    } catch (error) {
-      throw new Error("Invalid or expired token");
-    }
-  }
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET!
+    ) as {
+      userId: string;
+    };
 
-  async verifyEmail(token: string) {
-    try {
-      const jwtSecret = process.env.JWT_SECRET || 'fallback_secret_key';
-      
-      // Token verify karke user ID nikalenge
-      const decoded = jwt.verify(token, jwtSecret) as { userId: string };
-      
-      // User ka isActive status true kar denge
-      await userRepository.update(decoded.userId, { isActive: true });
-      
-      return { message: "Email verified successfully. Your account is now active." };
-    } catch (error) {
-      throw new AppError(400, "Invalid or expired verification token");
-    }
+    await userRepository.update(
+      decoded.userId,
+      {
+        isActive: true,
+      }
+    );
+
+    return {
+      message:
+        "Email verified successfully",
+    };
+
+  } catch {
+
+    throw new AppError(
+      400,
+      "Invalid or expired verification token"
+    );
+
   }
+}
+
+async logout(
+  accessToken: string,
+  refreshToken: string
+) {
+  const payload =
+    jwt.verify(
+      accessToken,
+      process.env.JWT_ACCESS_SECRET!
+    ) as {
+      userId: string;
+    };
+
+  await prisma.$transaction(async (tx) => {
+
+    await tx.refreshToken.deleteMany({
+      where: {
+        userId: payload.userId,
+        token: refreshToken,
+      },
+    });
+
+    const decoded =
+      jwt.decode(accessToken) as {
+        exp?: number;
+      };
+
+    if (decoded?.exp) {
+
+      const ttl =
+        decoded.exp -
+        Math.floor(Date.now() / 1000);
+
+      if (ttl > 0) {
+
+        await redisClient.set(
+          `bl_${accessToken}`,
+          "true",
+          "EX",
+          ttl
+        );
+
+      }
+
+    }
+
+  });
+
+  return {
+    message:
+      "Logged out successfully",
+  };
+}
 
 }
 

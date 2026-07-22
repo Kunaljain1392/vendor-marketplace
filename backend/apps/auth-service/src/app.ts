@@ -7,6 +7,9 @@ import authRoutes from './routes/auth.route.js';
 import cookieParser from "cookie-parser";
 import { globalErrorHandler, notFoundHandler } from "./middleware/error.middleware.js";
 
+import { swaggerUi, swaggerDocument } from "./config/swagger.js";
+
+
 const app: Application = express();
 // security middleware
 // basically it provides additonal rule sets to browser to handle res
@@ -26,6 +29,13 @@ app.use(cookieParser());
 
 // compress Response
 app.use(compression());
+
+// appi documentation 
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerDocument)
+);
 
 // HTTP request logger
 app.use(httpLogger);
