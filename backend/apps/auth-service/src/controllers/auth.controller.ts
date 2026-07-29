@@ -9,13 +9,13 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
   verifyEmailSchema,
+  resendVerificationSchema,
 } from "../schemas/auth.schema.js";
 import { ZodError } from "zod";
 // import { AuthRequest } from '../middleware/auth.middleware.js'; // Naya import
 import { userRepository } from "../repositories/user.repository.js";
 import { logger } from "../utils/logger.js";
 import { AppError } from "../exceptions/app.exception.js";
-import type { AuthRequest } from "../middleware/auth.middleware.js";
 
 export class AuthController {
   // Registration handle karne ka function (arrow function taaki 'this' ka issue na aaye)
@@ -86,7 +86,7 @@ export class AuthController {
 
   // ... (login logic)
 
-  getMe = async (req: AuthRequest, res: Response): Promise<void> => {
+  getMe = async (req: Request, res: Response): Promise<void> => {
     try {
       // req.user wahi data hai jo humne token banate waqt daala tha (jaise userId)
       if (!req.user) {
@@ -117,7 +117,7 @@ export class AuthController {
     }
   };
 
-  changePassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  changePassword = async (req: Request, res: Response): Promise<void> => {
     try {
       const validatedData = changePasswordSchema.parse({ body: req.body });
       if (!req.user) {
@@ -185,49 +185,92 @@ refreshToken = async (
   //   res.status(200).json({ success: true, message: "Logged out successfully. Please remove token from client." });
   // };
 
-  verifyEmail = async (
-    req: Request,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      const validatedData = verifyEmailSchema.parse({ body: req.body });
+verifyEmail = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const validatedData = verifyEmailSchema.parse({
+      query: req.query,
+    });
 
-      logger.info("Verifying email with token");
-      const result = await authService.verifyEmail(validatedData.body.token);
+    logger.info("Verifying email");
 
-      res.status(200).json({
-        success: true,
-        ...result,
+    const result = await authService.verifyEmail(
+      validatedData.query.token
+    );
+
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+logout = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader?.startsWith("Bearer ")) {
+      throw new AppError(401, "Access token is required");
+    }
+
+    const accessToken = authHeader.substring(7);
+
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      throw new AppError(400, "Refresh token is required");
+    }
+
+    const result = await authService.logout(
+      accessToken,
+      refreshToken
+    );
+
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+resendVerification = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const validatedData =
+      resendVerificationSchema.parse({
+        body: req.body,
       });
-    } catch (error) {
-      next(error); // Error handling middleware ke paas bhej diya
-    }
-  };
 
-  logout = async (
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction,
-  ): Promise<void> => {
-    try {
-      // Header se token nikalna
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
-        res.status(400).json({ success: false, message: "Token not found" });
-        return;
-      }
+    const result =
+      await authService.resendVerification(
+        validatedData.body.email
+      );
 
-      const token = authHeader.split(" ")[1];
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
 
-      // Service call karna
-      const result = await authService.logout(token);
+  } catch (error) {
+    next(error);
+  }
+};
 
-      res.status(200).json({ success: true, ...result });
-    } catch (error) {
-      next(error);
-    }
-  };
 }
 
 export const authController = new AuthController();

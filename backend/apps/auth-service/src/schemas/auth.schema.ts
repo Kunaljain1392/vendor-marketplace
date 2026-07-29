@@ -93,7 +93,7 @@ export const resetPasswordSchema = z.object({
 /* -------------------------------------------------------------------------- */
 
 export const verifyEmailSchema = z.object({
-  body: z.object({
+  query: z.object({
     token: z.string().min(1, "Verification token is required"),
   }),
 });
@@ -118,9 +118,17 @@ export const logoutSchema = z.object({
   }),
 });
 
+export const resendVerificationSchema = z.object({
+  body: z.object({
+    email: z.string().email(),
+  }),
+});
+
 /* -------------------------------------------------------------------------- */
 /*                                   DTOs                                     */
 /* -------------------------------------------------------------------------- */
+
+export type ResendVerificationSchema = z.infer<typeof resendVerificationSchema>["body"];
 
 export type RegisterDTO = z.infer<typeof registerSchema>["body"];
 
@@ -140,7 +148,7 @@ export type ResetPasswordDTO = z.infer<
 
 export type VerifyEmailDTO = z.infer<
   typeof verifyEmailSchema
->["body"];
+>["query"];
 
 export type RefreshTokenDTO = z.infer<
   typeof refreshTokenSchema

@@ -14,6 +14,7 @@ export interface RefreshTokenPayload {
 
 export interface VerifyEmailPayload {
   userId: string;
+  email: string;
 }
 
 export const generateAccessToken = (
@@ -117,6 +118,18 @@ export const verifyResetPasswordToken = (
   return payload as ResetPasswordPayload;
 };
 
+export const generateVerifyEmailToken = (
+  payload: VerifyEmailPayload
+): string => {
+  return jwt.sign(
+    payload,
+    env.JWT_VERIFY_EMAIL_SECRET,
+    {
+      expiresIn: "10m",
+    }
+  );
+};
+
 export const verifyEmailToken = (
   token: string
 ): VerifyEmailPayload => {
@@ -128,12 +141,14 @@ export const verifyEmailToken = (
   if (
     typeof payload !== "object" ||
     payload === null ||
-    !("userId" in payload)
+    !("userId" in payload) ||
+    !("email" in payload)
   ) {
     throw new Error("Invalid verification token");
   }
 
   return {
     userId: payload.userId as string,
+    email: payload.email as string
   };
 };

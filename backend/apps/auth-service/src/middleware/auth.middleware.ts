@@ -3,9 +3,9 @@ import { redisClient } from "../config/redis.js";
 import { AppError } from "../exceptions/app.exception.js";
 import { verifyAccessToken } from "../utils/jwt.util.js";
 
-export interface AuthRequest extends Request {
-  user: ReturnType<typeof verifyAccessToken>;
-}
+// export interface AuthRequest extends Request {
+//   user: ReturnType<typeof verifyAccessToken>;
+// }
 
 export const authenticateJWT = async (
   req: Request,
@@ -38,7 +38,7 @@ export const authenticateJWT = async (
 
     const payload = verifyAccessToken(token);
 
-    (req as AuthRequest).user = payload;
+    req.user = payload;
 
     next();
 

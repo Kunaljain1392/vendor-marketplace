@@ -7,9 +7,11 @@ info:
 
 servers:
   - url: http://localhost:3001
+    description: Local Development Server
 
 tags:
   - name: Authentication
+    description: Authentication APIs
 
 paths:
   /api/auth/register:
@@ -23,61 +25,213 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - email
-                - password
-                - firstName
-                - lastName
-
-              properties:
-                email:
-                  type: string
-                  format: email
-                  example: vendor@gmail.com
-
-                password:
-                  type: string
-                  format: password
-                  example: Password@123
-
-                firstName:
-                  type: string
-                  example: Kunal
-
-                lastName:
-                  type: string
-                  example: Jain
-
-                role:
-                  type: string
-                  enum:
-                    - CUSTOMER
-                    - VENDOR
-                  example: VENDOR
+              $ref: "#/components/schemas/RegisterRequest"
 
       responses:
         "201":
           description: User registered successfully
           content:
             application/json:
-              example:
-                success: true
-                message: User registered successfully
-                data:
-                  user:
-                    id: "8fd5b6ab-1d9b-4c84-9b4c-d2d77a9e4f63"
-                    email: "vendor@gmail.com"
-                    firstName: "Kunal"
-                    lastName: "Jain"
-                    role: "VENDOR"
-                    isVerified: false
-
-                  accessToken: "eyJhbGciOi..."
-                  refreshToken: "eyJhbGciOi..."
+                schema:
+                  $ref: "#/components/schemas/RegisterResponse"
 
         "400":
-          description: Validation Error
+           description: Validation Error
+           content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/ErrorResponse"
 
         "409":
-          description: User already exists
+           description: User already exists
+           content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/login:
+    post:
+      summary: Login User
+      tags:
+        - Authentication
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+
+      properties:
+        email:
+          type: string
+          format: email
+          example: vendor@gmail.com
+
+        password:
+          type: string
+          format: password
+          example: Password@123
+
+        firstName:
+          type: string
+          example: Kunal
+
+        lastName:
+          type: string
+          example: Jain
+
+        role:
+          type: string
+          enum:
+            - CUSTOMER
+            - VENDOR
+          example: VENDOR
+    User:
+      type: object
+
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "8fd5b6ab-1d9b-4c84-9b4c-d2d77a9e4f63"
+
+        email:
+          type: string
+          format: email
+          example: "vendor@gmail.com"
+
+        firstName:
+          type: string
+          example: "Kunal"
+
+        lastName:
+          type: string
+          example: "Jain"
+
+        role:
+          type: string
+          enum:
+            - CUSTOMER
+            - VENDOR
+            - ADMIN
+          example: VENDOR
+
+        isVerified:
+          type: boolean
+          example: false
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+
+      properties:
+        email:
+          type: string
+          format: email
+          example: vendor@gmail.com
+
+        password:
+          type: string
+          format: password
+          example: Password@123
+
+    LoginResponse:
+      type: object
+
+      properties:
+        success:
+          type: boolean
+          example: true
+
+        message:
+          type: string
+          example: Login successful
+
+        data:
+          type: object
+
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+
+            tokens:
+              $ref: "#/components/schemas/AuthTokens"
+    
+    AuthTokens:
+      type: object
+
+      properties:
+        accessToken:
+          type: string
+          example: "eyJhbGciOi..."
+
+        refreshToken:
+          type: string
+          example: "eyJhbGciOi..."
+
+    RegisterResponse:
+      type: object
+
+      properties:
+        success:
+          type: boolean
+          example: true
+
+        message:
+          type: string
+          example: User registered successfully
+
+        data:
+          type: object
+
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+
+            tokens:
+              $ref: "#/components/schemas/AuthTokens"
+
+    ErrorResponse:
+      type: object
+
+      properties:
+        success:
+          type: boolean
+          example: false
+
+        message:
+          type: string
+          example: Validation Error
