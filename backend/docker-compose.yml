@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: vendor-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - vendor-network
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: vendor-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - vendor-network
+
+volumes:
+  redis-data:
+  rabbitmq-data:
+
+networks:
+  vendor-network:
+    driver: bridge
