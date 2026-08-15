@@ -1,0 +1,82 @@
+openapi: 3.0.0
+
+info:
+  title: Vendor Marketplace - User Service
+  version: 1.0.0
+  description: User Service API
+
+servers:
+  - url: http://localhost:3002
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+paths:
+  /api/profile:
+    get:
+      summary: Get current user profile
+      tags:
+        - Profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Profile retrieved successfully
+          content:
+    application/json:
+      example:
+        id: "profile-uuid"
+        userId: "user-uuid"
+        firstName: "Kunal"
+        lastName: "Jain"
+        phone: "9876543210"
+        addresses: []
+        "401":
+          description: Unauthorized
+        "404":
+          description: Profile not found
+
+    patch:
+      summary: Update current user profile
+      tags:
+        - Profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+                phone:
+                  type: string
+          example:
+            firstName: "Kunal"
+            lastName: "Jain"
+            phone: "9876543210"
+      responses:
+        "200":
+          description: Profile updated successfully
+          content:
+            application/json:
+              example:
+                  id: "profile-uuid"
+                  userId: "user-uuid"
+                  firstName: "Kunal"
+                  lastName: "Jain"
+                  phone: "9876543210"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              example:
+                message: "Access token is required"
