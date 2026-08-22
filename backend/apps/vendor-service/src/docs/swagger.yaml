@@ -1,0 +1,315 @@
+openapi: 3.0.3
+
+info:
+  title: Vendor Service API
+  description: Vendor business and profile management APIs
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3003
+
+tags:
+  - name: Vendor
+    description: Vendor profile management APIs
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    Vendor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+        userId:
+          type: string
+          format: uuid
+          example: 7f8c9d10-e29b-41d4-a716-446655440111
+
+        businessName:
+          type: string
+          example: TechWorld Electronics
+
+        description:
+          type: string
+          nullable: true
+          example: Electronics and computer accessories
+
+        businessAddress:
+          type: string
+          nullable: true
+          example: Sector 62, Noida, Uttar Pradesh
+
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+            - SUSPENDED
+          example: ACTIVE
+
+        createdAt:
+          type: string
+          format: date-time
+          example: 2026-08-23T10:30:00.000Z
+
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2026-08-23T10:30:00.000Z
+
+    CreateVendorRequest:
+      type: object
+      required:
+        - businessName
+      properties:
+        businessName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: TechWorld Electronics
+
+        description:
+          type: string
+          maxLength: 500
+          example: Electronics and computer accessories
+
+        businessAddress:
+          type: string
+          maxLength: 300
+          example: Sector 62, Noida, Uttar Pradesh
+
+    UpdateVendorRequest:
+      type: object
+      properties:
+        businessName:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: TechWorld Electronics Pvt Ltd
+
+        description:
+          type: string
+          maxLength: 500
+          example: Updated electronics business
+
+        businessAddress:
+          type: string
+          maxLength: 300
+          example: Sector 63, Noida, Uttar Pradesh
+
+    VendorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Vendor'
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Vendor profile not found
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Validation failed
+        errors:
+          type: object
+          example:
+            businessName:
+              - Business name must be at least 2 characters
+
+paths:
+
+  /api/vendors:
+
+    post:
+      summary: Create vendor profile
+      description: Creates a vendor profile for the authenticated VENDOR user.
+      tags:
+        - Vendor
+
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVendorRequest'
+
+      responses:
+
+        '201':
+          description: Vendor profile created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorResponse'
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  userId: 7f8c9d10-e29b-41d4-a716-446655440111
+                  businessName: TechWorld Electronics
+                  description: Electronics and computer accessories
+                  businessAddress: Sector 62, Noida, Uttar Pradesh
+                  status: ACTIVE
+                  createdAt: 2026-08-23T10:30:00.000Z
+                  updatedAt: 2026-08-23T10:30:00.000Z
+
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Authentication required
+
+        '403':
+          description: User is not a vendor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Only vendors can create a vendor profile
+
+        '409':
+          description: Vendor profile already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Vendor profile already exists
+
+  /api/vendors/me:
+
+    get:
+      summary: Get my vendor profile
+      description: Returns the vendor profile of the authenticated user.
+      tags:
+        - Vendor
+
+      security:
+        - bearerAuth: []
+
+      responses:
+
+        '200':
+          description: Vendor profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorResponse'
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  userId: 7f8c9d10-e29b-41d4-a716-446655440111
+                  businessName: TechWorld Electronics
+                  description: Electronics and computer accessories
+                  businessAddress: Sector 62, Noida, Uttar Pradesh
+                  status: ACTIVE
+                  createdAt: 2026-08-23T10:30:00.000Z
+                  updatedAt: 2026-08-23T10:30:00.000Z
+
+        '401':
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Authentication required
+
+        '404':
+          description: Vendor profile not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Vendor profile not found
+
+    patch:
+      summary: Update my vendor profile
+      description: Updates the authenticated user's vendor profile.
+      tags:
+        - Vendor
+
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVendorRequest'
+            example:
+              businessName: TechWorld Electronics Pvt Ltd
+              description: Updated electronics business
+              businessAddress: Sector 63, Noida, Uttar Pradesh
+
+      responses:
+
+        '200':
+          description: Vendor profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VendorResponse'
+
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+        '401':
+          description: Authentication required
+
+        '404':
+          description: Vendor profile not found
+
+        '500':
+          description: Internal server error

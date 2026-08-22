@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    "module": "nodenext",
+    "target": "es2022",
+    "types": ["node"],
+
+    "sourceMap": false,
+    "declaration": false,
+    "declarationMap": false,
+
+    "strict": true,
+
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
