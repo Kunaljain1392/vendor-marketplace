@@ -40,8 +40,9 @@ app.use(
 
 app.get("/health",(_req,res) => {
     res.status(200).json({
-        status: "ok",
-        service: "user-service",
+        "success": true,
+        "service": "user-service",
+        "status": "healthy"
     })
 })
 

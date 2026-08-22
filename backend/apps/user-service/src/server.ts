@@ -1,10 +1,20 @@
-import app from "./app.js";
 import "dotenv/config";
+import app from "./app.js";
+import { connectRabbitMQ } from "./config/rabbitmq.js";
+import { logger } from "./utils/logger.js";
+import { env } from "./config/env.js";
 
-const PORT = process.env.PORT || 3002;
+const startServer = async () => {
+  try {
+    await connectRabbitMQ();
 
-const server = app.listen(PORT, () => {
-    console.log(`User Servoce running on prot ${PORT}`)
-})
+    app.listen(env.PORT, () => {
+      logger.info(`User Service running on port ${env.PORT}`);
+    });
+  } catch (error) {
+    logger.error(error, "Failed to start User Service");
+    process.exit(1);
+  }
+};
 
-export default server;
+startServer();
