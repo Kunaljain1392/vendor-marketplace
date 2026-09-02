@@ -68,6 +68,24 @@ async createVendor(
     return vendor;
   }
 
+async getVendorByUserId(
+  userId: string,
+): Promise<Vendor> {
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  const vendor = await vendorRepository.findOne({
+    where: { userId },
+  });
+
+  if (!vendor) {
+    throw new Error("Vendor profile not found");
+  }
+
+  return vendor;
+}
+
   async updateMyVendor(
     userId: string,
     data: UpdateVendorInput,

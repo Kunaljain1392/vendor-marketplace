@@ -82,3 +82,25 @@ export const updateMyVendor = async (
     data: vendor,
   });
 };
+
+export const getVendorByUserId = async (
+  req: Request,
+  res: Response,
+) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    throw new AppError(
+      "User ID is required",
+      400,
+    );
+  }
+
+  const vendor =
+    await vendorService.getVendorByUserId(userId);
+
+  return res.status(200).json({
+    success: true,
+    data: vendor,
+  });
+};
