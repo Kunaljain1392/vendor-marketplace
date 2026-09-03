@@ -1,0 +1,707 @@
+openapi: 3.0.3
+
+info:
+  title: Cart Service API
+  description: |
+    Cart Service for the Vendor Marketplace.
+
+    All cart operations are performed for the currently authenticated user.
+    The user ID is extracted from the JWT and is never accepted from the request body.
+
+    Product information is validated through the Product Service.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3006
+    description: Local development server
+
+tags:
+  - name: Cart
+    description: Shopping cart operations
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter your access token.
+
+  schemas:
+
+    CartItem:
+      type: object
+      example:
+        id: "6d3f1c20-3e3e-4e6f-8d8b-7e9a12345678"
+        productId: "550e8400-e29b-41d4-a716-446655440000"
+        productName: "Wireless Mechanical Keyboard"
+        price: 4999.99
+        quantity: 2
+        subtotal: 9999.98
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "6d3f1c20-3e3e-4e6f-8d8b-7e9a12345678"
+
+        productId:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+        productName:
+          type: string
+          example: "Wireless Mechanical Keyboard"
+
+        price:
+          type: number
+          format: double
+          example: 4999.99
+
+        quantity:
+          type: integer
+          example: 2
+
+        subtotal:
+          type: number
+          format: double
+          example: 9999.98
+
+    Cart:
+      type: object
+      example:
+        id: "9f3c8d20-7c9a-4e8b-9a11-123456789abc"
+        userId: "7b8c9d10-1234-4567-8901-abcdef123456"
+        items:
+          - id: "6d3f1c20-3e3e-4e6f-8d8b-7e9a12345678"
+            productId: "550e8400-e29b-41d4-a716-446655440000"
+            productName: "Wireless Mechanical Keyboard"
+            price: 4999.99
+            quantity: 2
+            subtotal: 9999.98
+        totalItems: 2
+        totalAmount: 9999.98
+        createdAt: "2026-09-04T10:00:00.000Z"
+        updatedAt: "2026-09-04T10:05:00.000Z"
+      properties:
+        id:
+          type: string
+          format: uuid
+
+        userId:
+          type: string
+          format: uuid
+
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartItem"
+
+        totalItems:
+          type: integer
+          example: 2
+
+        totalAmount:
+          type: number
+          format: double
+          example: 9999.98
+
+        createdAt:
+          type: string
+          format: date-time
+
+        updatedAt:
+          type: string
+          format: date-time
+
+    AddCartItemRequest:
+      type: object
+      required:
+        - productId
+        - quantity
+      example:
+        productId: "550e8400-e29b-41d4-a716-446655440000"
+        quantity: 2
+      properties:
+        productId:
+          type: string
+          format: uuid
+          description: ID of the product to add to the cart.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Quantity to add.
+          example: 2
+
+    UpdateCartItemRequest:
+      type: object
+      required:
+        - quantity
+      example:
+        quantity: 3
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: New quantity for the cart item.
+          example: 3
+
+    SuccessCartResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+
+        data:
+          $ref: "#/components/schemas/Cart"
+
+    CartActionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+
+        message:
+          type: string
+          example: "Item added to cart successfully"
+
+        data:
+          $ref: "#/components/schemas/Cart"
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+
+        message:
+          type: string
+          example: "Cart item not found"
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+
+        message:
+          type: string
+          example: "Validation failed"
+
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: "quantity"
+              message:
+                type: string
+                example: "Quantity cannot exceed 100"
+
+paths:
+
+  /cart:
+
+    get:
+      tags:
+        - Cart
+
+      summary: Get current user's cart
+
+      description: |
+        Returns the shopping cart belonging to the authenticated user.
+
+        If the user does not have a cart yet, an empty cart is created.
+
+      security:
+        - bearerAuth: []
+
+      responses:
+
+        "200":
+          description: Cart retrieved successfully
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessCartResponse"
+
+              example:
+                success: true
+                data:
+                  id: "9f3c8d20-7c9a-4e8b-9a11-123456789abc"
+                  userId: "7b8c9d10-1234-4567-8901-abcdef123456"
+                  items:
+                    - id: "6d3f1c20-3e3e-4e6f-8d8b-7e9a12345678"
+                      productId: "550e8400-e29b-41d4-a716-446655440000"
+                      productName: "Wireless Mechanical Keyboard"
+                      price: 4999.99
+                      quantity: 2
+                      subtotal: 9999.98
+                  totalItems: 2
+                  totalAmount: 9999.98
+                  createdAt: "2026-09-04T10:00:00.000Z"
+                  updatedAt: "2026-09-04T10:05:00.000Z"
+
+        "401":
+          description: Authentication required
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Authentication required"
+
+        "500":
+          description: Internal server error
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Internal server error"
+
+
+    delete:
+      tags:
+        - Cart
+
+      summary: Clear current user's cart
+
+      description: Removes all items from the authenticated user's cart.
+
+      security:
+        - bearerAuth: []
+
+      responses:
+
+        "200":
+          description: Cart cleared successfully
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CartActionResponse"
+
+              example:
+                success: true
+                message: "Cart cleared successfully"
+                data:
+                  id: "9f3c8d20-7c9a-4e8b-9a11-123456789abc"
+                  userId: "7b8c9d10-1234-4567-8901-abcdef123456"
+                  items: []
+                  totalItems: 0
+                  totalAmount: 0
+                  createdAt: "2026-09-04T10:00:00.000Z"
+                  updatedAt: "2026-09-04T10:10:00.000Z"
+
+        "401":
+          description: Authentication required
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Authentication required"
+
+        "500":
+          description: Internal server error
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Internal server error"
+
+
+  /cart/items:
+
+    post:
+      tags:
+        - Cart
+
+      summary: Add item to cart
+
+      description: |
+        Adds a product to the authenticated user's cart.
+
+        The Product Service is called to verify that the product exists
+        and is ACTIVE. Product name and price are obtained from the
+        Product Service.
+
+        If the product already exists in the cart, the requested quantity
+        is added to the existing quantity.
+
+      security:
+        - bearerAuth: []
+
+      requestBody:
+        required: true
+
+        content:
+          application/json:
+
+            schema:
+              $ref: "#/components/schemas/AddCartItemRequest"
+
+            example:
+              productId: "550e8400-e29b-41d4-a716-446655440000"
+              quantity: 2
+
+      responses:
+
+        "201":
+          description: Item added successfully
+
+          content:
+            application/json:
+
+              schema:
+                $ref: "#/components/schemas/CartActionResponse"
+
+              example:
+                success: true
+                message: "Item added to cart successfully"
+                data:
+                  id: "9f3c8d20-7c9a-4e8b-9a11-123456789abc"
+                  userId: "7b8c9d10-1234-4567-8901-abcdef123456"
+                  items:
+                    - id: "6d3f1c20-3e3e-4e6f-8d8b-7e9a12345678"
+                      productId: "550e8400-e29b-41d4-a716-446655440000"
+                      productName: "Wireless Mechanical Keyboard"
+                      price: 4999.99
+                      quantity: 2
+                      subtotal: 9999.98
+                  totalItems: 2
+                  totalAmount: 9999.98
+                  createdAt: "2026-09-04T10:00:00.000Z"
+                  updatedAt: "2026-09-04T10:05:00.000Z"
+
+        "400":
+          description: Invalid request or quantity limit exceeded
+
+          content:
+            application/json:
+
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              examples:
+
+                invalidQuantity:
+                  summary: Invalid quantity
+
+                  value:
+                    success: false
+                    message: "Quantity must be at least 1"
+
+                quantityLimit:
+                  summary: Quantity exceeds maximum
+
+                  value:
+                    success: false
+                    message: "Cart item quantity cannot exceed 100"
+
+                inactiveProduct:
+                  summary: Product is inactive
+
+                  value:
+                    success: false
+                    message: "Product is not active"
+
+        "401":
+          description: Authentication required
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Authentication required"
+
+        "404":
+          description: Product not found
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Product not found"
+
+        "503":
+          description: Product Service unavailable
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Product Service is unavailable"
+
+        "500":
+          description: Internal server error
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Internal server error"
+
+
+  /cart/items/{productId}:
+
+    patch:
+      tags:
+        - Cart
+
+      summary: Update cart item quantity
+
+      description: Updates the quantity of an existing cart item.
+
+      security:
+        - bearerAuth: []
+
+      parameters:
+
+        - name: productId
+          in: path
+          required: true
+
+          description: ID of the product in the cart.
+
+          schema:
+            type: string
+            format: uuid
+
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+      requestBody:
+        required: true
+
+        content:
+          application/json:
+
+            schema:
+              $ref: "#/components/schemas/UpdateCartItemRequest"
+
+            example:
+              quantity: 3
+
+      responses:
+
+        "200":
+          description: Cart item updated successfully
+
+          content:
+            application/json:
+
+              schema:
+                $ref: "#/components/schemas/CartActionResponse"
+
+              example:
+                success: true
+                message: "Cart item updated successfully"
+                data:
+                  id: "9f3c8d20-7c9a-4e8b-9a11-123456789abc"
+                  userId: "7b8c9d10-1234-4567-8901-abcdef123456"
+                  items:
+                    - id: "6d3f1c20-3e3e-4e6f-8d8b-7e9a12345678"
+                      productId: "550e8400-e29b-41d4-a716-446655440000"
+                      productName: "Wireless Mechanical Keyboard"
+                      price: 4999.99
+                      quantity: 3
+                      subtotal: 14999.97
+                  totalItems: 3
+                  totalAmount: 14999.97
+                  createdAt: "2026-09-04T10:00:00.000Z"
+                  updatedAt: "2026-09-04T10:15:00.000Z"
+
+        "400":
+          description: Invalid request
+
+          content:
+            application/json:
+
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Quantity must be at least 1"
+
+        "401":
+          description: Authentication required
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Authentication required"
+
+        "404":
+          description: Cart item or product not found
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              examples:
+
+                cartItemNotFound:
+                  summary: Cart item not found
+
+                  value:
+                    success: false
+                    message: "Cart item not found"
+
+                productNotFound:
+                  summary: Product not found
+
+                  value:
+                    success: false
+                    message: "Product not found"
+
+        "503":
+          description: Product Service unavailable
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Product Service is unavailable"
+
+        "500":
+          description: Internal server error
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Internal server error"
+
+
+    delete:
+      tags:
+        - Cart
+
+      summary: Remove item from cart
+
+      description: Removes a specific product from the authenticated user's cart.
+
+      security:
+        - bearerAuth: []
+
+      parameters:
+
+        - name: productId
+          in: path
+          required: true
+
+          description: ID of the product to remove.
+
+          schema:
+            type: string
+            format: uuid
+
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+      responses:
+
+        "200":
+          description: Cart item removed successfully
+
+          content:
+            application/json:
+
+              schema:
+                $ref: "#/components/schemas/CartActionResponse"
+
+              example:
+                success: true
+                message: "Cart item removed successfully"
+                data:
+                  id: "9f3c8d20-7c9a-4e8b-9a11-123456789abc"
+                  userId: "7b8c9d10-1234-4567-8901-abcdef123456"
+                  items: []
+                  totalItems: 0
+                  totalAmount: 0
+                  createdAt: "2026-09-04T10:00:00.000Z"
+                  updatedAt: "2026-09-04T10:20:00.000Z"
+
+        "401":
+          description: Authentication required
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Authentication required"
+
+        "404":
+          description: Cart item not found
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Cart item not found"
+
+        "500":
+          description: Internal server error
+
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+              example:
+                success: false
+                message: "Internal server error"
